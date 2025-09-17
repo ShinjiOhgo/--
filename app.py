@@ -13,7 +13,7 @@ st.set_page_config(
 )
 
 # --- Excelファイルのパスを指定 ---
-EXCEL_FILE_PATH = '麻雀記録.xlsx'
+EXCEL_FILE_PATH = 'mahjong_management.xlsx'
 
 # --- セッション管理 ---
 if 'manager' not in st.session_state:
