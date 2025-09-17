@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
   push:
     branches: [ main ]
-    paths:
-      - 'app.py'
-      - 'mahjong_manager.py'
-      - 'requirements.txt'
+    # paths: を削除、またはコメントアウトする
+    #  - 'app.py'
+    #  - 'mahjong_manager.py'
+    #  - 'requirements.txt'
 
 jobs:
   trigger:
