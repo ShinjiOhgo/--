@@ -17,7 +17,6 @@ class MahjongScoreManager:
         self.raw_data = None
         self.load_data()
 
-    # load_dataは変更ありません
     def load_data(self):
         try:
             xls = pd.ExcelFile(self.file_path)
@@ -34,7 +33,10 @@ class MahjongScoreManager:
                 if df.empty or pd.isna(df.iloc[0, 1]):
                     continue
 
+                # ▼▼▼ ここの正規表現を修正しました ▼▼▼
                 date_str_clean = re.sub(r'_\d+$', '', sheet_name)
+                # ▲▲▲ 修正箇所 ▲▲▲
+
                 date_obj = pd.to_datetime(date_str_clean, format='%y%m%d', errors='coerce')
                 if pd.isna(date_obj):
                     date_obj = pd.to_datetime(date_str_clean, format='%Y%m%d', errors='coerce')
@@ -88,9 +90,11 @@ class MahjongScoreManager:
         else:
             self.raw_data = pd.DataFrame()
 
+    # add_record メソッドは変更ありません
     def add_record(self, date_str, records):
         """
         マトリックス形式のシートに記録を追記。同日の別メンバーの場合はシートを分けて作成。
+        【修正済み】書き込み時にExcelシートのヘッダー順を正として、スコアを並べ替える。
         """
         try:
             wb = openpyxl.load_workbook(self.file_path)
@@ -100,21 +104,17 @@ class MahjongScoreManager:
                 wb.remove(wb['Sheet'])
 
         form_players = [r['名前'] for r in records]
-        target_sheet_name = date_str
         
-        # --- 既存シートの確認と、追記先シート名の決定ロジック ---
         sheet_to_add_to = None
         
-        # まずは日付そのままのシート(例: 250803)があるか確認
         if date_str in wb.sheetnames:
             ws_check = wb[date_str]
             header_players = [ws_check.cell(row=1, column=j).value for j in range(2, 6)]
             if sorted(header_players) == sorted(form_players):
                 sheet_to_add_to = date_str
 
-        # 日付+番号のシート(例: 250803_2)を順番に確認
         if not sheet_to_add_to:
-            for i in range(2, 20): # _2から_19まで探す
+            for i in range(2, 20):
                 sheet_name_candidate = f"{date_str}_{i}"
                 if sheet_name_candidate in wb.sheetnames:
                     ws_check = wb[sheet_name_candidate]
@@ -123,8 +123,14 @@ class MahjongScoreManager:
                         sheet_to_add_to = sheet_name_candidate
                         break
         
-        if sheet_to_add_to: # 追記できるシートが見つかった場合
+        ws = None
+        header_players = []
+        new_game_row = 2
+
+        if sheet_to_add_to:
             ws = wb[sheet_to_add_to]
+            header_players = [ws.cell(row=1, column=j).value for j in range(2, 6)]
+            
             chip_row_index = -1
             for row in ws.iter_rows(min_row=2, max_col=1):
                 cell = row[0]
@@ -141,25 +147,28 @@ class MahjongScoreManager:
             
             ws.insert_rows(new_game_row)
 
-        else: # 追記できるシートがない -> 新規シートを作成
-            # 新しいシート名を探す
-            if date_str not in wb.sheetnames:
-                target_sheet_name = date_str
-            else:
+        else:
+            target_sheet_name = date_str
+            if date_str in wb.sheetnames:
                 for i in range(2, 20):
                     sheet_name_candidate = f"{date_str}_{i}"
                     if sheet_name_candidate not in wb.sheetnames:
                         target_sheet_name = sheet_name_candidate
                         break
+            else:
+                 target_sheet_name = date_str
             
             ws = wb.create_sheet(title=target_sheet_name)
-            for i, name in enumerate(form_players):
+            header_players = [r['名前'] for r in records]
+            for i, name in enumerate(header_players):
                 ws.cell(row=1, column=i+2, value=name)
-            new_game_row = 2
+        
+        record_map = {r['名前']: r for r in records}
+        if not all(name in record_map for name in header_players):
+             return False, "エラー: 記録対象のプレイヤーがシートのプレイヤーと一致しません。"
 
-        # --- 書き込み共通処理 ---
-        scores = [r['SCORE'] for r in records]
-        chips = [r['チップ'] for r in records]
+        scores = [record_map[name]['SCORE'] for name in header_players]
+        chips = [record_map[name]['チップ'] for name in header_players]
         ranks = pd.Series(scores).rank(method='min', ascending=False).astype(int).tolist()
 
         ws.cell(row=new_game_row, column=1).value = new_game_row - 1
@@ -174,19 +183,25 @@ class MahjongScoreManager:
         ws.cell(row=total_score_row, column=1).value = '合計'
 
         for i in range(4):
-            prev_chip_val = ws.cell(row=chip_balance_row, column=i+2).value or 0
-            prev_total_val = ws.cell(row=total_score_row, column=i+2).value or 0
-            ws.cell(row=chip_balance_row, column=i+2).value = prev_chip_val + chips[i]
-            ws.cell(row=total_score_row, column=i+2).value = prev_total_val + scores[i]
+            current_chip_cell = ws.cell(row=chip_balance_row, column=i+2)
+            current_total_cell = ws.cell(row=total_score_row, column=i+2)
+            
+            prev_chip_val = current_chip_cell.value if current_chip_cell.value is not None else 0
+            prev_total_val = current_total_cell.value if current_total_cell.value is not None else 0
+
+            current_chip_cell.value = prev_chip_val + chips[i]
+            current_total_cell.value = prev_total_val + scores[i]
             
         wb.save(self.file_path)
         self.load_data()
-        return True, f"シート'{target_sheet_name}'の{new_game_row - 1}半荘目として記録を追記しました。"
-
+        return True, f"シート'{ws.title}'の{new_game_row - 1}半荘目として記録を追記しました。"
+        
+    # get_player_list メソッドは変更ありません
     def get_player_list(self):
         if self.raw_data is None or self.raw_data.empty: return []
         return sorted(self.raw_data['名前'].unique())
 
+    # calculate_stats メソッドは変更ありません
     def calculate_stats(self, start_date=None, end_date=None, chip_filter='全て'):
         if self.raw_data is None or self.raw_data.empty: return pd.DataFrame()
         
