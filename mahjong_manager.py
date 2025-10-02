@@ -169,7 +169,7 @@ class MahjongScoreManager:
 
         scores = [record_map[name]['SCORE'] for name in header_players]
         chips = [record_map[name]['チップ'] for name in header_players]
-        ranks = pd.Series(scores).rank(method='min', ascending=False).astype(int).tolist()
+        ranks = pd.Series(scores).rank(method='average', ascending=False).tolist()
 
         ws.cell(row=new_game_row, column=1).value = new_game_row - 1
         for i in range(4):
