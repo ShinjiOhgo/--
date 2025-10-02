@@ -74,7 +74,7 @@ if app_mode == "成績ランキング":
     stats_df = manager.calculate_stats(start_date, end_date, chip_filter=chip_rule)
     if not stats_df.empty:
         ranking = stats_df.sort_values(by='トータルスコア', ascending=False).reset_index(drop=True)
-        st.dataframe(ranking[['名前', 'トータルスコア', 'チップスコア', '平均着順', '対戦回数']], use_container_width=True)
+        st.dataframe(ranking[['名前', 'トータルスコア', 'チップスコア', '平均着順', '対戦回数']], use_container_width=True, height = 800)
     else:
         st.warning("選択された条件のデータがありません。")
 
@@ -90,7 +90,7 @@ elif app_mode == "個人成績":
         player_data = stats_df[stats_df['名前'] == selected_player]
         if not player_data.empty:
             st.header(f"{selected_player} さんの成績")
-            st.dataframe(player_data[['名前', 'トータルスコア', 'チップスコア', '平均着順', '対戦回数']], use_container_width=True)
+            st.dataframe(player_data[['名前', 'トータルスコア', 'チップスコア', '平均着順', '対戦回数']], use_container_width=True, height=1000)
         else:
             st.warning(f"選択された条件に {selected_player} さんのデータはありません。")
     else:
@@ -125,42 +125,52 @@ elif app_mode == "成績入力":
             st.error(f"エラー: 4人の素点合計が100000になりません (現在: {sum(p['素点'] for p in players_input)})。")
         else:
             # --- ▼▼▼ ここから修正 ▼▼▼ ---
-            
-            # 素点（持ち点）でプレイヤーを順位付け
+
+            # 1. 素点（持ち点）でプレイヤーを降順にソート
             sorted_players = sorted(players_input, key=lambda p: p['素点'], reverse=True)
-            
-            # 2位、3位、4位のスコアを計算
+
+            # 2. 同点がないと仮定した場合の各順位のスコアを計算
+            #    - 2位、3位、4位のスコアを、ソート後の各順位のプレイヤーの素点から計算
             score_2nd = round((sorted_players[1]['素点'] - 30000) / 1000) + 10
             score_3rd = round((sorted_players[2]['素点'] - 30000) / 1000) - 10
             score_4th = round((sorted_players[3]['素点'] - 30000) / 1000) - 30
             
-            # 1位のスコアを計算 (合計が0になるように調整)
+            #    - 1位のスコアは、全体の合計が0になるように調整
             score_1st = -(score_2nd + score_3rd + score_4th)
             
-            # 最終的な記録リストを、順位順に作成する
-            # これにより、プレイヤーとスコアのペアが一致することを保証します
-            final_records = [
-                {
-                    '名前': sorted_players[0]['名前'],
-                    'SCORE': score_1st,
-                    'チップ': sorted_players[0]['チップ']
-                },
-                {
-                    '名前': sorted_players[1]['名前'],
-                    'SCORE': score_2nd,
-                    'チップ': sorted_players[1]['チップ']
-                },
-                {
-                    '名前': sorted_players[2]['名前'],
-                    'SCORE': score_3rd,
-                    'チップ': sorted_players[2]['チップ']
-                },
-                {
-                    '名前': sorted_players[3]['名前'],
-                    'SCORE': score_4th,
-                    'チップ': sorted_players[3]['チップ']
-                },
-            ]
+            #    - 各順位の理論上のスコアをリストに格納
+            theoretical_scores = [score_1st, score_2nd, score_3rd, score_4th]
+
+            # 3. 最終的な記録リストを作成（同点処理）
+            final_records = []
+            i = 0
+            while i < len(sorted_players):
+                # 同じ素点のプレイヤーが何人いるかを見つける
+                j = i
+                while j < len(sorted_players) and sorted_players[j]['素点'] == sorted_players[i]['素点']:
+                    j += 1
+                
+                # 同点グループの範囲はインデックス i から j-1
+                num_tied = j - i
+                
+                # 同点グループがまたがる順位の理論スコアを合計
+                total_score_for_tied_group = sum(theoretical_scores[i:j])
+                
+                # 平均スコアを計算
+                average_score = total_score_for_tied_group / num_tied if num_tied > 0 else 0
+                
+                # 同点グループの各プレイヤーに平均化されたスコアを割り当てる
+                for k in range(i, j):
+                    player = sorted_players[k]
+                    final_records.append({
+                        '名前': player['名前'],
+                        'SCORE': average_score,
+                        'チップ': player['チップ']
+                    })
+                
+                # 次のプレイヤー（グループ）へインデックスを移動
+                i = j
+
 
             # --- ▲▲▲ ここまで修正 ▲▲▲ ---
 

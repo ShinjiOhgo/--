@@ -67,7 +67,7 @@ class MahjongScoreManager:
                     game_scores = pd.to_numeric(row, errors='coerce').dropna()
                     if len(game_scores) < 4: continue
 
-                    ranks = game_scores.rank(method='min', ascending=False)
+                    ranks = game_scores.rank(method='average', ascending=False)
                     for i in range(4):
                         all_games_data.append({
                             '日付': date_obj, '名前': players[i],
